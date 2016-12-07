@@ -1,0 +1,250 @@
+<html>
+    <head>
+        <title>QR Codes generator by CK</title>
+        <link href='css/style.css' rel='stylesheet'>
+        <script type="text/javascript" src="js/jquery-1.9.1.min.js"></script>
+        <script type="text/javascript" src="js/jquery.labelify.js"></script>
+        <script type="text/javascript" src="js/jquery.blockUI.js"></script>
+        <script type="text/javascript" src="js/knockout-3.4.1.js"></script>
+        <script type="text/javascript" src="js/ckls.runtime.js"></script>
+        
+        <script type="text/javascript">
+            (function () {
+                "use strict";
+
+                var connectionInfo = null;
+                var ckls = new cklsRuntime();
+                
+                var page = 0;
+                var sessionGuid = null;
+
+                var lOListViewModel = null;
+
+                $(document).ready(function() {
+                    
+                    ckls.init("https://ck-hub.crossknowledge.com");
+                    prepUI();                                  
+
+                    $("#butLoadChannels").click(function() {
+                        $.blockUI(
+                            { 
+                                css: { 
+                                    border: 'none', 
+                                    padding: '15px', 
+                                    backgroundColor: '#000', 
+                                    '-webkit-border-radius': '10px', 
+                                    '-moz-border-radius': '10px', 
+                                    opacity: .5, 
+                                    color: '#fff' 
+                                }
+                            }); 
+                        
+                        cleanUI();
+                        
+                        //1. Register on ckAuth using the token
+                        ckls.mobileRegister(
+                            $("#tbToken").val()
+                        )
+                        .done(function (data) {
+                            connectionInfo = data;
+                            
+                            //2. Log onto your instance
+                            ckls.mobileConnect(
+                                connectionInfo.instanceUrl,
+                                connectionInfo.login,
+                                connectionInfo.password,
+                                "QRCodeGenerator"
+                            )
+                            .done(function (data) {
+                                //3. Retrieve Channels list
+                                ckls.getTrainingSessions({"offset": 0, "limit": 50})
+                                    .done(function (data) {
+                                        //Load in select ...
+                                        var options = $("#selChannelsList");
+                                        $.each(data.value, function(item) {
+                                            var o = data.value[item];
+                                            if (o.modality == "learning_channel") {
+                                                options.append(new Option(o.title, o.guid));
+                                            }
+                                        });
+                                        $('#selChannelsList').prop('disabled', false);
+                                        $('#btnLoadQRCodes').prop('disabled', false);
+
+                                        // Append click
+                                        $('#btnLoadQRCodes').click(function() {
+                                            sessionGuid = $("#selChannelsList").val();
+                                            page = 0;
+
+                                            lOListViewModel = {
+                                                lo: ko.observableArray()
+                                            };
+
+                                            ko.applyBindings(lOListViewModel);
+                                            loadQRCodes();
+                                        });
+
+                                        $.unblockUI();
+                                    })
+                                    .fail(function (data) {
+                                        $("#msg").text("Trainings retrieval failed");
+                                        $.unblockUI();
+                                    });
+                            })
+                            .fail(function (data) {
+                                if (data.responseText != undefined) {
+                                    $("#msg").text('Login failed:', '"' + data.responseText + '"');
+                                }
+                                else if (data.responseJSON != undefined) {
+                                    $("#msg").text('Login failed:', '"' + data.responseJSON.message + '"');
+                                }
+                                else {
+                                    $("#msg").text('Login failed: unknown error', "");
+                                }
+                                $.unblockUI();
+                            });
+                        })
+                        .fail(function (data) {
+                            if (data.responseText != undefined) {
+                                $("#msg").text('Login failed:', '"' + data.responseText + '"');
+                            }
+                            else if (data.responseJSON != undefined) {
+                                $("#msg").text('Login failed:', '"' + data.responseJSON.message + '"');
+                            }
+                            else {
+                                $("#msg").text('Login failed: unknown error', "");
+                            }
+                            $.unblockUI();
+                        });
+                    });
+                });
+
+                function loadQRCodes() {
+                    $.blockUI(
+                    { 
+                        css: { 
+                            border: 'none', 
+                            padding: '15px', 
+                            backgroundColor: '#000', 
+                            '-webkit-border-radius': '10px', 
+                            '-moz-border-radius': '10px', 
+                            opacity: .5, 
+                            color: '#fff' 
+                        }
+                    }); 
+                    
+                    showQR();
+                    var offset = page*50;
+
+                    var loFilter = {
+                        limit: 50,
+                        offset: offset,
+                        sessionGuid: sessionGuid
+                    };
+
+                    ckls.getLearningObjects(loFilter)
+                        .done(function (data) {                            
+                            $.each(data.value, function(item) {
+                                var o = data.value[item];
+                                data.value[item]["qrCodeUri"] = "qrcode.php?url=" + connectionInfo.instanceUrl + "sso/content/" + o.guid;
+                            });
+
+                            lOListViewModel.lo(data.value);
+                            $.unblockUI();                            
+                        })
+                        .fail(function (data) {
+                            $.unblockUI();
+                        });
+                }
+
+                function prepUI() {
+                    $("#tbToken").labelify({ labelledClass: "inputHighlight" });
+                    $('#selChannelsList').prop('disabled', 'disabled');
+                    $('#btnLoadQRCodes').prop('disabled', 'disabled'); 
+
+                    $("#home").click(function() {
+                        hideQR();
+                    });
+
+                    $("#prev").click(function() {
+                        if (page > 0) {
+                            page--;
+                            loadQRCodes();
+                        }
+                    });
+
+                    $("#next").click(function() {
+                        page++;
+                        loadQRCodes();
+                    });
+                }
+
+                function cleanUI() {
+                    $("#msg").text("");
+                    $("#selChannelsList").empty();
+                    $('#selChannelsList').prop('disabled', 'disabled');
+                    $('#btnLoadQRCodes').prop('disabled', 'disabled');
+                }
+
+                function showQR() {
+                    $("#params").hide();
+                    $("#qrCodes").show();
+                }
+
+                function hideQR() {
+                    $("#params").show();
+                    $("#qrCodes").hide();
+                }
+            })();
+        </script>
+    </head>
+    <body>
+        <div id="body">
+            <div id="header">
+                <h1>
+                    QR Codes generator
+                </h1>
+            </div>
+            <div id="params" style="margin-top: 15px; display: block;">            
+                <label class="label" for="tbToken">App access code</label>
+                <input class="input" type="text" id="tbToken" title="eg. YUXXP" style="width: 100px;">
+
+                <input type="button" class="input" value="Load Channels" id="butLoadChannels" style="width: 130px; display: inline;" />&nbsp;<span id="msg" style="color: red;"></span>
+
+                <hr />
+
+                <label class="label" for="selChannelsList">Learning channels list</label>
+                <div class="select-wrap">
+                    <select class="select" id="selChannelsList"></select>
+                </div>
+                <input type="button" class="input" value="Load QR Codes" id="btnLoadQRCodes" style="width: 130px; display: inline;" />
+            </div>
+            <div id="qrCodes" style="width: 1000px; display: none;">
+                <div style="cursor: pointer">
+                    <a id="home">home</a> | <a id="prev">prev</a> | <a id="next">next</a>
+                </div>
+                <br />
+                <ul class="container inline-b" id="qrCodesList" data-bind="foreach: lo">
+                    <li class="item inline-b-item">
+                        <table>
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        <img class="item-logo" data-bind="attr : {src: thumbnail.small}" />
+                                        <b><span data-bind="text: title"></span></b>
+                                        <br />
+                                        <p><span data-bind="text: summary"></span></p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="text-align: center">
+                                        <img  data-bind="attr : {src: qrCodeUri}" />
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </body>
+</html>
